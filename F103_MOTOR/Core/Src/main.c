@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "Debug.h"
+#include "DRV8848.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,6 +51,25 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+//typedef struct DRV8848{
+//	GPIO_TypeDef *nSleep_Port;
+//	uint16_t EN;
+//	TIM_HandleTypeDef *TIM;
+//	uint32_t CH1;
+//	uint32_t CH2;
+//	GPIO_TypeDef *nFault_Port;
+//	uint16_t nFault;
+//}DRV8848;
+
+DRV8848 MTR1 = {EN1_GPIO_Port,
+				EN1_Pin,
+				&htim1,
+				TIM_CHANNEL_3,
+				TIM_CHANNEL_4,
+				FAULT1_GPIO_Port,
+				FAULT1_Pin};
+
+DRV8848_Status MTR1_status;
 
 /* USER CODE END PV */
 
@@ -63,7 +83,18 @@ static void MX_TIM3_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif
 
+void debug_HB(void);
+
+//void driverInit(DRV8848 *self);
+//void driverEnable(DRV8848 *self);
+//void driverDisable(DRV8848 *self);
+//void singleDrive(DRV8848 *self, float duty, uint8_t DIR);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -79,7 +110,6 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -107,15 +137,24 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  dbg_printf("Hello World!\r\n");
+  dbg_printf("Firmware by lmaoPkk\r\n");
+  dbg_printf("\"hehe\" dual H-bridge driver initializing...\r\n");
+  DRV8848_Init(&MTR1);
 
+  HAL_Delay(100);
+  DRV8848_Enable(&MTR1);
+  HAL_Delay(10);
+  DRV8848_setDrive(&MTR1, 0.5f, 0);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_GPIO_TogglePin(HB_GPIO_Port,HB_Pin);
-	  HAL_Delay(1000);
+	  debug_HB();
+//	  printf("haha\n hehe\n lmao \n");
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -237,12 +276,12 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 0;
+  htim1.Init.Prescaler = 17;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 65535;
+  htim1.Init.Period = 199;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
   {
     Error_Handler();
@@ -290,7 +329,7 @@ static void MX_TIM1_Init(void)
   sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
   sBreakDeadTimeConfig.DeadTime = 0;
   sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_LOW;
   sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
   if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
   {
@@ -486,17 +525,17 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, HB_Pin|FAULT2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(HB_GPIO_Port, HB_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, EN1_Pin|LED1_Pin|LED2_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : HB_Pin FAULT2_Pin */
-  GPIO_InitStruct.Pin = HB_Pin|FAULT2_Pin;
+  /*Configure GPIO pin : HB_Pin */
+  GPIO_InitStruct.Pin = HB_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(HB_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : USER_Pin EN2_Pin */
   GPIO_InitStruct.Pin = USER_Pin|EN2_Pin;
@@ -504,9 +543,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : FAULT2_Pin */
+  GPIO_InitStruct.Pin = FAULT2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(FAULT2_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : FAULT1_Pin */
   GPIO_InitStruct.Pin = FAULT1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(FAULT1_GPIO_Port, &GPIO_InitStruct);
 
@@ -517,12 +562,38 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+PUTCHAR_PROTOTYPE {
+	HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+	return ch;
+}
+
+void debug_HB() {
+	static uint32_t lastTick = 0;
+	if (HAL_GetTick() - lastTick >= 1000) {
+		lastTick = HAL_GetTick();
+		HAL_GPIO_TogglePin(HB_GPIO_Port, HB_Pin);
+	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+  if(GPIO_Pin == FAULT1_Pin) {
+	  MTR1_status = DRV8848_FAULT;
+  }
+}
+
 
 /* USER CODE END 4 */
 
@@ -535,8 +606,12 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+//  driverDisable(&MTR1);
+  DRV8848_ErrHandler(&MTR1);
   while (1)
   {
+	  HAL_GPIO_TogglePin(HB_GPIO_Port, HB_Pin);
+	  HAL_Delay(100);
   }
   /* USER CODE END Error_Handler_Debug */
 }

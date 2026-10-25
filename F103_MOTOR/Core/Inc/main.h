@@ -31,7 +31,6 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -61,10 +60,10 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define HB_Pin GPIO_PIN_13
 #define HB_GPIO_Port GPIOC
-#define ENC1_2_Pin GPIO_PIN_0
-#define ENC1_2_GPIO_Port GPIOA
-#define ENC1_1_Pin GPIO_PIN_1
-#define ENC1_1_GPIO_Port GPIOA
+#define ENC12_Pin GPIO_PIN_0
+#define ENC12_GPIO_Port GPIOA
+#define ENC11_Pin GPIO_PIN_1
+#define ENC11_GPIO_Port GPIOA
 #define ENC2_1_Pin GPIO_PIN_6
 #define ENC2_1_GPIO_Port GPIOA
 #define ENC2_2_Pin GPIO_PIN_7
@@ -75,18 +74,20 @@ void Error_Handler(void);
 #define VBAT_GPIO_Port GPIOB
 #define FAULT2_Pin GPIO_PIN_8
 #define FAULT2_GPIO_Port GPIOC
+#define FAULT2_EXTI_IRQn EXTI9_5_IRQn
 #define EN2_Pin GPIO_PIN_9
 #define EN2_GPIO_Port GPIOC
-#define MTR2_2_Pin GPIO_PIN_8
-#define MTR2_2_GPIO_Port GPIOA
-#define MTR2_1_Pin GPIO_PIN_9
-#define MTR2_1_GPIO_Port GPIOA
-#define MTR1_2_Pin GPIO_PIN_10
-#define MTR1_2_GPIO_Port GPIOA
-#define MTR1_1_Pin GPIO_PIN_11
-#define MTR1_1_GPIO_Port GPIOA
+#define MTR22_Pin GPIO_PIN_8
+#define MTR22_GPIO_Port GPIOA
+#define MTR21_Pin GPIO_PIN_9
+#define MTR21_GPIO_Port GPIOA
+#define MTR12_Pin GPIO_PIN_10
+#define MTR12_GPIO_Port GPIOA
+#define MTR11_Pin GPIO_PIN_11
+#define MTR11_GPIO_Port GPIOA
 #define FAULT1_Pin GPIO_PIN_3
 #define FAULT1_GPIO_Port GPIOB
+#define FAULT1_EXTI_IRQn EXTI3_IRQn
 #define EN1_Pin GPIO_PIN_4
 #define EN1_GPIO_Port GPIOB
 #define LED1_Pin GPIO_PIN_8
