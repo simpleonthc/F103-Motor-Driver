@@ -24,39 +24,63 @@ DRV8848_Status DRV8848_Disable(DRV8848 *self) {
 }
 
 DRV8848_Status DRV8848_setDrive(DRV8848 *self, float duty, DRV8848_DIR DIR) {
-	if (duty <= 0.0f || duty >= 1.0f) {
+	uint16_t Period_p1 = (uint16_t)(self->htim->Init.Period) + 1;
+	uint16_t Decay;
+
+	if (duty < 0.0f || duty > 1.0f) {
 		return DRV8848_INVALID_PARAM;
 	}
 
-	uint16_t Period_p1 = (uint16_t)(self->htim->Init.Period) + 1;
-	uint16_t Decay;
-	if (duty < dutyCycle_cutoff) {
-		if (self->decayMode == DRV8848_COAST) {
-			Decay = Period_p1;
-		}
-		else {
-			Decay = 0;
-		}
-		__HAL_TIM_SET_COMPARE(self->htim,self->ain1_Channel, Decay);
+	if (duty <= dutyCycle_cutoff) {
+		duty = 0.0f;
+	}
+
+	if (self->decayMode == DRV8848_BRAKE) {
+		Decay = Period_p1;
+		duty = 1.0f - duty;
+		DIR = !DIR;
+	}
+	else {
+		Decay = 0;
+	}
+
+	uint16_t CCR = (uint16_t)(Period_p1 * duty);
+	if (DIR) {
+		__HAL_TIM_SET_COMPARE(self->htim,self->ain1_Channel, CCR);
 		__HAL_TIM_SET_COMPARE(self->htim,self->ain2_Channel, Decay);
 	}
 	else {
-		uint16_t CCR = (uint16_t)(Period_p1 * duty);
-		if (DIR) {
-			__HAL_TIM_SET_COMPARE(self->htim,self->ain1_Channel, CCR);
-			__HAL_TIM_SET_COMPARE(self->htim,self->ain2_Channel, 0);
-		}
-		else {
-			__HAL_TIM_SET_COMPARE(self->htim,self->ain1_Channel, 0);
-			__HAL_TIM_SET_COMPARE(self->htim,self->ain2_Channel, CCR);
-		}
+		__HAL_TIM_SET_COMPARE(self->htim,self->ain1_Channel, Decay);
+		__HAL_TIM_SET_COMPARE(self->htim,self->ain2_Channel, CCR);
 	}
 
 	return DRV8848_OK;
 }
 
-uint8_t DRV8848_IsFaultActive(const DRV8848 *self) {
-	return 0;
+DRV8848_Status DRV8848_setCoast(DRV8848 *self) {
+	if (DRV8848_IsEnabled(self) == DRV8848_SLEEP) {
+		return DRV8848_SLEEP;
+	}
+
+	__HAL_TIM_SET_COMPARE(self->htim,self->ain1_Channel, 0);
+	__HAL_TIM_SET_COMPARE(self->htim,self->ain2_Channel, 0);
+	return DRV8848_OK;
+}
+
+DRV8848_Status DRV8848_IsFaultActive(const DRV8848 *self) {
+	GPIO_PinState faultState = HAL_GPIO_ReadPin(self->nFault_Port, self->nFault_Pin);
+	if (faultState == GPIO_PIN_RESET) {
+		return DRV8848_FAULT;
+	}
+	return DRV8848_OK;
+}
+
+DRV8848_Status DRV8848_IsEnabled(DRV8848 *self) {
+	GPIO_PinState nSleep = HAL_GPIO_ReadPin(self->nSleep_Port, self->nSleep_Pin);
+	if (nSleep == 0) {
+		return DRV8848_SLEEP;
+	}
+	return DRV8848_OK;
 }
 
 DRV8848_Status DRV8848_ErrHandler(DRV8848 *self) {

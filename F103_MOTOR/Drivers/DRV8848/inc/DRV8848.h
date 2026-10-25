@@ -11,18 +11,19 @@
 #include "DRV8848_types.h"
 #include "stm32f1xx_hal.h"
 
-#define dutyCycle_cutoff 0.1f
+#define dutyCycle_cutoff 0.05f
 
 typedef enum {
-	DIR_FWD,
-	DIR_REV
+	DRV8848_FWD,
+	DRV8848_REV
 } DRV8848_DIR;
 
 typedef enum {
-    DRV8848_OK = 0,
+    DRV8848_OK = 0u,
     DRV8848_ERROR,
     DRV8848_INVALID_PARAM,
-    DRV8848_FAULT
+    DRV8848_FAULT,
+	DRV8848_SLEEP
 } DRV8848_Status;
 
 typedef enum {
@@ -78,9 +79,19 @@ DRV8848_Status DRV8848_Disable(DRV8848 *self);
 DRV8848_Status DRV8848_setDrive(DRV8848 *self, float duty, DRV8848_DIR dir);
 
 /*
+ * Coasting
+ * */
+DRV8848_Status DRV8848_setCoast(DRV8848 *self);
+
+/*
  * Error detection
  * */
-uint8_t DRV8848_IsFaultActive(const DRV8848 *self);
+DRV8848_Status DRV8848_IsFaultActive(const DRV8848 *self);
+
+/*
+ * Get sleep state
+ * */
+DRV8848_Status DRV8848_IsEnabled(DRV8848 *self);
 
 /*
  * @brief   Handles error

@@ -68,9 +68,13 @@ DRV8848 MTR1 = {EN1_GPIO_Port,
 				TIM_CHANNEL_3,
 				TIM_CHANNEL_4,
 				FAULT1_GPIO_Port,
-				FAULT1_Pin};
+				FAULT1_Pin,
+				DRV8848_BRAKE};
 
-DRV8848_Status MTR1_status;
+DRV8848_Status MTR1_status = DRV8848_OK;
+float dutyCycle = 1.0f;
+float dutyCycle_prev = 0.0f;
+
 
 /* USER CODE END PV */
 
@@ -146,7 +150,7 @@ int main(void)
   HAL_Delay(100);
   DRV8848_Enable(&MTR1);
   HAL_Delay(10);
-  DRV8848_setDrive(&MTR1, 0.5f, 0);
+  DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -155,6 +159,15 @@ int main(void)
   {
 	  debug_HB();
 //	  printf("haha\n hehe\n lmao \n");
+	  if (DRV8848_IsFaultActive(&MTR1) == DRV8848_FAULT) {
+		  MTR1_status = DRV8848_FAULT;
+	  }
+
+	  if (dutyCycle != dutyCycle_prev) {
+		  DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
+		  dutyCycle_prev = dutyCycle;
+	  }
+
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
@@ -538,21 +551,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(HB_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : USER_Pin EN2_Pin */
-  GPIO_InitStruct.Pin = USER_Pin|EN2_Pin;
+  /*Configure GPIO pins : USER_Pin FAULT2_Pin EN2_Pin */
+  GPIO_InitStruct.Pin = USER_Pin|FAULT2_Pin|EN2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : FAULT2_Pin */
-  GPIO_InitStruct.Pin = FAULT2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(FAULT2_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : FAULT1_Pin */
   GPIO_InitStruct.Pin = FAULT1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(FAULT1_GPIO_Port, &GPIO_InitStruct);
 
@@ -562,13 +569,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

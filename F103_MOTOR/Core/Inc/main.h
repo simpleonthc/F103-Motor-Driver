@@ -74,7 +74,6 @@ void Error_Handler(void);
 #define VBAT_GPIO_Port GPIOB
 #define FAULT2_Pin GPIO_PIN_8
 #define FAULT2_GPIO_Port GPIOC
-#define FAULT2_EXTI_IRQn EXTI9_5_IRQn
 #define EN2_Pin GPIO_PIN_9
 #define EN2_GPIO_Port GPIOC
 #define MTR22_Pin GPIO_PIN_8
@@ -87,7 +86,6 @@ void Error_Handler(void);
 #define MTR11_GPIO_Port GPIOA
 #define FAULT1_Pin GPIO_PIN_3
 #define FAULT1_GPIO_Port GPIOB
-#define FAULT1_EXTI_IRQn EXTI3_IRQn
 #define EN1_Pin GPIO_PIN_4
 #define EN1_GPIO_Port GPIOB
 #define LED1_Pin GPIO_PIN_8
