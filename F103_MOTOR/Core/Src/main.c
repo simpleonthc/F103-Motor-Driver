@@ -5,21 +5,11 @@
   * @brief          : Main program body
   * @programmer     : lmaoPkk
   ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
+  * Skyscrapers are built from rock bottom up
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Debug.h"
@@ -28,7 +18,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum main_states {
+	MAIN_STANDBY = 0u,
+	MAIN_INITIALIZATION,
+	MAIN_ERROR
+} Program_State;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -38,7 +32,11 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -52,15 +50,7 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-//typedef struct DRV8848{
-//	GPIO_TypeDef *nSleep_Port;
-//	uint16_t EN;
-//	TIM_HandleTypeDef *TIM;
-//	uint32_t CH1;
-//	uint32_t CH2;
-//	GPIO_TypeDef *nFault_Port;
-//	uint16_t nFault;
-//}DRV8848;
+Program_State MAIN_State = MAIN_INITIALIZATION;
 
 DRV8848 MTR1 = {EN1_GPIO_Port,
 				EN1_Pin,
@@ -72,10 +62,20 @@ DRV8848 MTR1 = {EN1_GPIO_Port,
 				DRV8848_BRAKE};
 
 DRV8848_Status MTR1_status = DRV8848_OK;
+
+DRV8848 MTR2 = {EN2_GPIO_Port,
+				EN2_Pin,
+				&htim1,
+				TIM_CHANNEL_1,
+				TIM_CHANNEL_2,
+				FAULT2_GPIO_Port,
+				FAULT2_Pin,
+				DRV8848_BRAKE};
+
+DRV8848_Status MTR2_status = DRV8848_OK;
+
 float dutyCycle = 1.0f;
 float dutyCycle_prev = 0.0f;
-
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -88,18 +88,8 @@ static void MX_TIM3_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-#ifdef __GNUC__
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
-#else
-#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
-#endif
 
 void debug_HB(void);
-
-//void driverInit(DRV8848 *self);
-//void driverEnable(DRV8848 *self);
-//void driverDisable(DRV8848 *self);
-//void singleDrive(DRV8848 *self, float duty, uint8_t DIR);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/

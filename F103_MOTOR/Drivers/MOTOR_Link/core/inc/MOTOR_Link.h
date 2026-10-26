@@ -1,0 +1,24 @@
+/*
+ * MOTOR_Link.h
+ *
+ *  Created on: Oct 26, 2026
+ *      Author: pk
+ */
+
+#ifndef MOTOR_LINK_CORE_INC_MOTOR_LINK_H_
+#define MOTOR_LINK_CORE_INC_MOTOR_LINK_H_
+
+typedef enum {
+	MOTOR_MODE_DISABLE,
+	MOTOR_MODE_COAST,
+	MOTOR_MODE_BRAKE
+} MOTOR_Mode;
+
+typedef enum {
+	MOTOR_VELOCITY,
+	MOTOR_SETTING,
+	MOTOR_INITIALIZATION
+
+} MOTOR_CMD;
+
+#endif /* MOTOR_LINK_CORE_INC_MOTOR_LINK_H_ */
