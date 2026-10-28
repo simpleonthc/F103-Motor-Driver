@@ -14,6 +14,7 @@
 /* USER CODE BEGIN Includes */
 #include "Debug.h"
 #include "DRV8848.h"
+#include "MOTOR_Link.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -76,6 +77,11 @@ DRV8848_Status MTR2_status = DRV8848_OK;
 
 float dutyCycle = 1.0f;
 float dutyCycle_prev = 0.0f;
+
+uint8_t buffer[5];
+ML_CommandVelocity Velocity = {200, 150};
+ML_Payload payload = {ML_SET_VELOCITY, &Velocity};
+size_t *encoded_len;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -141,6 +147,9 @@ int main(void)
   DRV8848_Enable(&MTR1);
   HAL_Delay(10);
   DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
+
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -157,7 +166,7 @@ int main(void)
 		  DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
 		  dutyCycle_prev = dutyCycle;
 	  }
-
+	  ML_EncodeCommand(buffer, &payload, sizeof(buffer), encoded_len);
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
 

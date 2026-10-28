@@ -8,27 +8,28 @@
 #ifndef DRV8848_DRV8848_H_
 #define DRV8848_DRV8848_H_
 
-#include "DRV8848_types.h"
+//#include "DRV8848_types.h"
+#include <stdint.h>
 #include "stm32f1xx_hal.h"
 
 #define dutyCycle_cutoff 0.05f
 
 typedef enum {
-	DRV8848_FWD,
-	DRV8848_REV
+	DRV8848_FWD = 0x00,
+	DRV8848_REV = 0x01
 } DRV8848_DIR;
 
 typedef enum {
-    DRV8848_OK = 0u,
-    DRV8848_ERROR,
-    DRV8848_INVALID_PARAM,
-    DRV8848_FAULT,
-	DRV8848_SLEEP
+    DRV8848_OK            = 0x00,
+    DRV8848_ERROR         = 0x01,
+    DRV8848_INVALID_PARAM = 0x02,
+    DRV8848_FAULT         = 0x03,
+	DRV8848_SLEEP         = 0x04
 } DRV8848_Status;
 
 typedef enum {
-	DRV8848_COAST,
-	DRV8848_BRAKE
+	DRV8848_COAST = 0x00,
+	DRV8848_BRAKE = 0x01
 } DRV8848_Mode;
 
 typedef struct DRV8848{
