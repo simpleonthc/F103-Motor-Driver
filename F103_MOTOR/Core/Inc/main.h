@@ -88,10 +88,10 @@ void Error_Handler(void);
 #define FAULT1_GPIO_Port GPIOB
 #define EN1_Pin GPIO_PIN_4
 #define EN1_GPIO_Port GPIOB
-#define LED1_Pin GPIO_PIN_8
-#define LED1_GPIO_Port GPIOB
-#define LED2_Pin GPIO_PIN_9
-#define LED2_GPIO_Port GPIOB
+#define ACT1_Pin GPIO_PIN_8
+#define ACT1_GPIO_Port GPIOB
+#define ACT2_Pin GPIO_PIN_9
+#define ACT2_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

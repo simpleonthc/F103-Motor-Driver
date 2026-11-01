@@ -10,6 +10,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Debug.h"
@@ -49,6 +50,7 @@ TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 Program_State MAIN_State = MAIN_INITIALIZATION;
@@ -64,6 +66,26 @@ DRV8848 MTR1 = {EN1_GPIO_Port,
 
 DRV8848_Status MTR1_status = DRV8848_OK;
 
+uint8_t MTR_txFlag = 1;
+uint8_t MTR_tx_buffer[ML_TX_BUFFER_SIZE];
+uint8_t MTR_rx_buffer[ML_RX_BUFFER_SIZE];
+int16_t MTR1_Velocity;
+uint16_t MTR1_Acceleration, MTR1_DriveMode;
+ML_UARTInterface MTR_interface = {
+								&huart2,
+								&MTR_txFlag,
+								MTR_tx_buffer,
+								MTR_rx_buffer
+								};
+ML_MotorLink MTR1_link = {
+		.uart = {
+				.huart = &huart2,
+				.p_tx_flag = &MTR_txFlag,
+				.p_tx_buffer = MTR_tx_buffer,
+				.p_rx_buffer = MTR_rx_buffer
+		},
+};
+
 DRV8848 MTR2 = {EN2_GPIO_Port,
 				EN2_Pin,
 				&htim1,
@@ -78,15 +100,16 @@ DRV8848_Status MTR2_status = DRV8848_OK;
 float dutyCycle = 1.0f;
 float dutyCycle_prev = 0.0f;
 
-uint8_t buffer[5];
-ML_CommandVelocity Velocity = {200, 150};
-ML_Payload payload = {ML_SET_VELOCITY, &Velocity};
-size_t *encoded_len;
+//uint8_t buffer[5];
+//ML_CommandVelocity Velocity = {200, 150};
+////ML_Payload payload = {ML_SET_VELOCITY, &Velocity};
+//size_t *encoded_len;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
@@ -131,6 +154,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
@@ -166,8 +190,8 @@ int main(void)
 		  DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
 		  dutyCycle_prev = dutyCycle;
 	  }
-	  ML_EncodeCommand(buffer, &payload, sizeof(buffer), encoded_len);
-	  HAL_Delay(10);
+//	  ML_EncodeCommand(buffer, &payload, sizeof(buffer), encoded_len);
+	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -520,6 +544,22 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -541,7 +581,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(HB_GPIO_Port, HB_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, EN1_Pin|LED1_Pin|LED2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, EN1_Pin|ACT1_Pin|ACT2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : HB_Pin */
   GPIO_InitStruct.Pin = HB_Pin;
@@ -562,8 +602,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(FAULT1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : EN1_Pin LED1_Pin LED2_Pin */
-  GPIO_InitStruct.Pin = EN1_Pin|LED1_Pin|LED2_Pin;
+  /*Configure GPIO pins : EN1_Pin ACT1_Pin ACT2_Pin */
+  GPIO_InitStruct.Pin = EN1_Pin|ACT1_Pin|ACT2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -592,6 +632,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   if(GPIO_Pin == FAULT1_Pin) {
 	  MTR1_status = DRV8848_FAULT;
   }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+	if (huart->Instance == USART2) {
+		MTR_txFlag = 1;
+		HAL_GPIO_TogglePin(ACT1_GPIO_Port, ACT1_Pin);
+	}
+
 }
 
 
