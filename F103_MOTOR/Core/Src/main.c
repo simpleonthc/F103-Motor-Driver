@@ -80,6 +80,8 @@ ML_UARTInterface ML_Interface = {
 		.huart = &huart2
 };
 
+ML_Master masterStruct;
+
 float dutyCycle = 1.0f;
 float dutyCycle_prev = 0.0f;
 
@@ -155,7 +157,7 @@ int main(void)
   HAL_Delay(10);
   DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
 
-
+  ML_decodeTelemetry(&masterStruct);
 
   /* USER CODE END 2 */
 

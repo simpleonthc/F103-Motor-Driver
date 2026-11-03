@@ -15,6 +15,8 @@
 #include "motor_link_uart.h"
 #include "cobs.h"
 
+ML_Status ML_decodeTelemetry(ML_Master *self);
+
 ML_Status ML_setVelocity(ML_Master *self, int16_t leftVelocity, int16_t rightVelocity);
 ML_Status ML_receiveVelocity(ML_Driver *self, int16_t *leftVelocity, int16_t *rightvelocity);
 /*
