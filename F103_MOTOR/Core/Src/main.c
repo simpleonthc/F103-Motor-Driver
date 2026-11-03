@@ -63,28 +63,7 @@ DRV8848 MTR1 = {EN1_GPIO_Port,
 				FAULT1_GPIO_Port,
 				FAULT1_Pin,
 				DRV8848_BRAKE};
-
 DRV8848_Status MTR1_status = DRV8848_OK;
-
-uint8_t MTR_txFlag = 1;
-uint8_t MTR_tx_buffer[ML_TX_BUFFER_SIZE];
-uint8_t MTR_rx_buffer[ML_RX_BUFFER_SIZE];
-int16_t MTR1_Velocity;
-uint16_t MTR1_Acceleration, MTR1_DriveMode;
-ML_UARTInterface MTR_interface = {
-								&huart2,
-								&MTR_txFlag,
-								MTR_tx_buffer,
-								MTR_rx_buffer
-								};
-ML_MotorLink MTR1_link = {
-		.uart = {
-				.huart = &huart2,
-				.p_tx_flag = &MTR_txFlag,
-				.p_tx_buffer = MTR_tx_buffer,
-				.p_rx_buffer = MTR_rx_buffer
-		},
-};
 
 DRV8848 MTR2 = {EN2_GPIO_Port,
 				EN2_Pin,
@@ -94,8 +73,12 @@ DRV8848 MTR2 = {EN2_GPIO_Port,
 				FAULT2_GPIO_Port,
 				FAULT2_Pin,
 				DRV8848_BRAKE};
-
 DRV8848_Status MTR2_status = DRV8848_OK;
+
+
+ML_UARTInterface ML_Interface = {
+		.huart = &huart2
+};
 
 float dutyCycle = 1.0f;
 float dutyCycle_prev = 0.0f;
@@ -190,7 +173,7 @@ int main(void)
 		  DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
 		  dutyCycle_prev = dutyCycle;
 	  }
-//	  ML_EncodeCommand(buffer, &payload, sizeof(buffer), encoded_len);
+
 	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
@@ -636,7 +619,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart->Instance == USART2) {
-		MTR_txFlag = 1;
+		ML_Interface.tx_flag = 1;
 		HAL_GPIO_TogglePin(ACT1_GPIO_Port, ACT1_Pin);
 	}
 

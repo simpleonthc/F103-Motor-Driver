@@ -8,26 +8,19 @@
 #include "motor_link_uart.h"
 
 
-ML_Status ML_UARTWrite(UART_HandleTypeDef *huart, uint8_t *isSent, uint8_t *pData, size_t data_len) {
-	if (*isSent == 1) {
-		HAL_StatusTypeDef result = HAL_UART_Transmit_DMA(huart, pData, data_len);
-		*isSent = 0;
-		if (result != HAL_OK) {
-			return ML_TX_ERROR;
-		}
+extern ML_UARTInterface ML_Interface;
 
-
+ML_Status ML_UARTWrite(uint8_t *pData, size_t data_len) {
+	if (ML_Interface.tx_flag == 1) {
+		HAL_UART_Transmit_DMA(ML_Interface.huart, pData, data_len);
+		ML_Interface.tx_flag = 0;
 	}
-
 
 	return ML_OK;
 }
 
-ML_Status ML_UARTRead(UART_HandleTypeDef *huart, uint8_t *pData, size_t data_len) {
-	HAL_StatusTypeDef result = HAL_UART_Receive_DMA(huart, pData, data_len);
-	if (result != HAL_OK) {
-		return ML_TX_ERROR;
-	}
+ML_Status ML_UARTRead(uint8_t *pData, size_t data_len) {
+	HAL_UART_Receive_DMA(ML_Interface.huart, pData, data_len);
 	return ML_OK;
 }
 

@@ -8,49 +8,62 @@
 /*
  * Functions for Main controller side
  * */
-ML_Status ML_sendVelocity(ML_MotorLink *self, int16_t leftVelocity, int16_t rightVelocity) {
-	const size_t sof_len = 2;
-	const size_t frame_len = 5;
-	uint8_t *tx_buffer = self->uart.tx_buffer;
-	tx_buffer[0] = SOF1;
-	tx_buffer[1] = SOF2;
-	tx_buffer[2] = ML_SET_VELOCITY;
-	tx_buffer[3] = (uint8_t)(leftVelocity & 0xFF);
-	tx_buffer[4] = (uint8_t)(leftVelocity >> 8); ;
-	tx_buffer[5] = (uint8_t)(rightVelocity & 0xFF);
-	tx_buffer[6] = (uint8_t)(rightVelocity >> 8);
+ML_Status ML_setVelocity(ML_Master *self, int16_t leftVelocity, int16_t rightVelocity) {
+//	const size_t sof_len = 2;
+//	const size_t frame_len = 5;
+//	uint8_t *send_buffer = self->uart.tx_buffer;
+//	tx_buffer[0] = SOF1;
+//	tx_buffer[1] = SOF2;
+//	tx_buffer[2] = ML_SET_VELOCITY;
+//	tx_buffer[3] = (uint8_t)(leftVelocity & 0xFF);
+//	tx_buffer[4] = (uint8_t)(leftVelocity >> 8); ;
+//	tx_buffer[5] = (uint8_t)(rightVelocity & 0xFF);
+//	tx_buffer[6] = (uint8_t)(rightVelocity >> 8);
 
-	ML_UARTWrite(self->uart.huart, &self->uart.tx_flag, self->uart.tx_buffer, frame_len + sof_len);
+//	size_t out_size = encodeCOBS(inptr, inputlen, outptr, outlen, add_trailing_zero)
+
+//	ML_UARTWrite(self->uart.huart, &self->uart.tx_flag, self->uart.tx_buffer, frame_len + sof_len);
 	return ML_OK;
 }
 
+ML_Status ML_decodeTelemetry(ML_Master *self) {
+	size_t telemetry_buf_len = 7;
+	uint8_t telemetry_buf[telemetry_buf_len];
+	ML_UARTRead(telemetry_buf, telemetry_buf_len);
+
+	size_t decoded_size = decodeCOBS_inplace(telemetry_buf, telemetry_buf_len);
+	if (decoded_size == 0) {
+		return ML_FAULT;
+	}
+
+	self->
+	return ML_OK;
+}
 /*
  * Functions for Motor controller side
  * */
-ML_Status ML_Receive(ML_MotorLink *self) {
-	ML_UARTRead(self->uart.huart, self->uart.rx_buffer, ML_TX_BUFFER_SIZE);
-	uint8_t *rx_buffer = self->uart.rx_buffer;
-	bool valid_frame = false;
 
-	for(int i= 0; i < (ML_RX_BUFFER_SIZE - ML_TX_BUFFER_SIZE); i++) {
-		if (rx_buffer[i] == SOF1 && rx_buffer[i+1] == SOF2) {
-			valid_frame = true;
-		}
-	}
-	if (valid_frame == false) {
-		return ML_FAULT;
-	}
-	valid_frame = !valid_frame;
-	switch(rx_buffer[2]){
-	case ML_SET_VELOCITY:
+ML_Status ML_sendTelemetry(ML_Driver *self,
+							int16_t leftVelocity,
+							int16_t rightVelocity,
+							uint8_t VBAT, uint8_t FAULT, uint8_t STATUS) {
+	size_t databuf_len = 7;
+	uint8_t databuf[databuf_len];
+	uint8_t encodedbuf[databuf_len + 1];
 
-	default:
-		return ML_OK;
-	}
-	return ML_OK;
-}
+	databuf[0] = (uint8_t)(leftVelocity & 0xFF);
+	databuf[1] = (uint8_t)(leftVelocity >> 8); ;
+	databuf[2] = (uint8_t)(rightVelocity & 0xFF);
+	databuf[3] = (uint8_t)(rightVelocity >> 8);
+	databuf[4] = VBAT;
+	databuf[5] = FAULT;
+	databuf[6] = STATUS;
 
-ML_Status ML_ReceiveVelocity(ML_MotorLink *self) {
-	self->command
-	return ML_OK;
+	size_t encodedSize = encodeCOBS(databuf,
+									databuf_len,
+									encodedbuf,
+									databuf_len + 1,
+									true);
+
+	return ML_UARTWrite(encodedbuf, encodedSize);
 }
