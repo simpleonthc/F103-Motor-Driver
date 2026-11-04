@@ -13,6 +13,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <math.h>
 #include "Debug.h"
 #include "DRV8848.h"
 #include "MOTOR_Link.h"
@@ -88,6 +89,7 @@ float dutyCycle_prev = 0.0f;
 
 
 uint8_t VBAT = 0;
+int32_t counter;
 
 /* USER CODE END PV */
 
@@ -116,6 +118,30 @@ uint8_t getVBAT() {
 	}
 
 	return (uint8_t)(value_adc * VBAT_divider);
+}
+
+float controller_PID(int16_t setPoint_velocity,
+						int16_t current_velocity,
+						float Kp,
+						float Ki,
+						float Kd, bool LPF, float dt) {
+
+	int16_t error_velocity = setPoint_velocity - current_velocity;
+	static int16_t prev_error_velocity = 0;
+
+	// Low-pass pre-filter
+	if (LPF) {
+		float alpha = (float)(exp(-Ki * dt / Kp));
+		error_velocity = error_velocity * alpha + prev_error_velocity * (1-alpha);
+	}
+
+	// PID
+	error_velocity+= error_velocity * dt;
+	float PID = Kp * error_velocity +
+				Ki * error_velocity +
+				Kd * (error_velocity - prev_error_velocity) / dt;
+
+	return PID;
 }
 /* USER CODE END PFP */
 
@@ -170,6 +196,10 @@ int main(void)
   HAL_Delay(10);
   DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
 
+  // Start counter for encoder
+  HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+
+
   // Start ADC for VBAT measurement
   HAL_ADCEx_Calibration_Start(&hadc1);
   HAL_ADC_Start(&hadc1);
@@ -191,8 +221,8 @@ int main(void)
 	  }
 
 	  // Send telemetry
-	  ML_sendTelemetry(&driverStruct, leftVelocity, rightVelocity, VBAT, 0, 0);
-
+	  //ML_sendTelemetry(&driverStruct);
+	  counter = __HAL_TIM_GET_COUNTER(&htim2);
 	  // Non-critikal task
 	  VBAT = getVBAT();
 	  HAL_Delay(10);

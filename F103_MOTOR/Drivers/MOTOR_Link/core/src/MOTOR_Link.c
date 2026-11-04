@@ -49,21 +49,18 @@ ML_Status ML_decodeTelemetry(ML_Master *self) {
  ************ Functions for Motor controller side ***************
  **************************************************************/
 
-ML_Status ML_sendTelemetry(ML_Driver *self,
-							int16_t leftVelocity,
-							int16_t rightVelocity,
-							uint8_t VBAT, uint8_t FAULT, uint8_t STATUS) {
+ML_Status ML_sendTelemetry(ML_Driver *self) {
 	size_t databuf_len = 7;
 	uint8_t databuf[databuf_len];
 	uint8_t encodedbuf[databuf_len + 1];
 
-	databuf[0] = (uint8_t)(leftVelocity & 0xFF);
-	databuf[1] = (uint8_t)(leftVelocity >> 8); ;
-	databuf[2] = (uint8_t)(rightVelocity & 0xFF);
-	databuf[3] = (uint8_t)(rightVelocity >> 8);
-	databuf[4] = VBAT;
-	databuf[5] = FAULT;
-	databuf[6] = STATUS;
+	databuf[0] = (uint8_t)(self->telemetry.ML_Left_Velocity & 0xFF);
+	databuf[1] = (uint8_t)(self->telemetry.ML_Left_Velocity >> 8); ;
+	databuf[2] = (uint8_t)(self->telemetry.ML_Right_Velocity & 0xFF);
+	databuf[3] = (uint8_t)(self->telemetry.ML_Right_Velocity >> 8);
+	databuf[4] = self->telemetry.VBAT;
+	databuf[5] = self->telemetry.FAULT;
+	databuf[6] = self->telemetry.STATUS;
 
 	size_t encodedSize = encodeCOBS(databuf,
 									databuf_len,
