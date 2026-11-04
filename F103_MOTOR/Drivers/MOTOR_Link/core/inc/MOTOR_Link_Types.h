@@ -66,7 +66,7 @@ typedef struct{
 }ML_Master;
 
 typedef struct{
-	ML_Command command;
+	ML_Command setPoints;
 	ML_Telemetry telemetry;
 }ML_Driver;
 

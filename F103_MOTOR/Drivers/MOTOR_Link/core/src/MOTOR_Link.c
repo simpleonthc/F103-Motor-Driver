@@ -5,9 +5,9 @@
  *      Author: pk
  */
 #include "MOTOR_Link.h"
-/*
- * Functions for Main controller side
- * */
+/**************************************************************
+ ************ Functions for Main controller side **************
+ **************************************************************/
 ML_Status ML_setVelocity(ML_Master *self, int16_t leftVelocity, int16_t rightVelocity) {
 //	const size_t sof_len = 2;
 //	const size_t frame_len = 5;
@@ -28,20 +28,26 @@ ML_Status ML_setVelocity(ML_Master *self, int16_t leftVelocity, int16_t rightVel
 
 ML_Status ML_decodeTelemetry(ML_Master *self) {
 	size_t telemetry_buf_len = 7;
-	uint8_t telemetry_buf[7] = {0x01, 0x01, 0x02, 0x04, 0x02, 0xFC, 0x00};
+	uint8_t telemetry_buf[telemetry_buf_len];
 	//ML_UARTRead(telemetry_buf, telemetry_buf_len);
-
 	size_t decoded_size = decodeCOBS_inplace(telemetry_buf, telemetry_buf_len);
 	if (decoded_size == 0) {
 		return ML_FAULT;
 	}
-	//self->telemetry.ML_Left_Velocity
-	int16_t output = (int16_t)((telemetry_buf[2] << 8) | telemetry_buf[1]);
+
+	self->telemetry.ML_Left_Velocity = (int16_t)((telemetry_buf[2] << 8) | telemetry_buf[1]);
+	self->telemetry.ML_Right_Velocity = (int16_t)((telemetry_buf[4] << 8) | telemetry_buf[3]);
+	self->telemetry.VBAT = telemetry_buf[5];
+	self->telemetry.FAULT = telemetry_buf[6];
+	self->telemetry.STATUS = telemetry_buf[7];
 	return ML_OK;
 }
-/*
- * Functions for Motor controller side
- * */
+
+
+
+/**************************************************************
+ ************ Functions for Motor controller side ***************
+ **************************************************************/
 
 ML_Status ML_sendTelemetry(ML_Driver *self,
 							int16_t leftVelocity,

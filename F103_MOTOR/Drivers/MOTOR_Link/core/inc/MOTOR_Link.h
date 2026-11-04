@@ -16,6 +16,10 @@
 #include "cobs.h"
 
 ML_Status ML_decodeTelemetry(ML_Master *self);
+ML_Status ML_sendTelemetry(ML_Driver *self,
+							int16_t leftVelocity,
+							int16_t rightVelocity,
+							uint8_t VBAT, uint8_t FAULT, uint8_t STATUS);
 
 ML_Status ML_setVelocity(ML_Master *self, int16_t leftVelocity, int16_t rightVelocity);
 ML_Status ML_receiveVelocity(ML_Driver *self, int16_t *leftVelocity, int16_t *rightvelocity);

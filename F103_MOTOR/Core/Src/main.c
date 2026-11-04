@@ -53,6 +53,7 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
+
 Program_State MAIN_State = MAIN_INITIALIZATION;
 
 DRV8848 MTR1 = {EN1_GPIO_Port,
@@ -80,15 +81,14 @@ ML_UARTInterface ML_Interface = {
 		.huart = &huart2
 };
 
-ML_Master masterStruct;
+ML_Driver driverStruct;
 
 float dutyCycle = 1.0f;
 float dutyCycle_prev = 0.0f;
 
-//uint8_t buffer[5];
-//ML_CommandVelocity Velocity = {200, 150};
-////ML_Payload payload = {ML_SET_VELOCITY, &Velocity};
-//size_t *encoded_len;
+
+uint8_t VBAT = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,6 +104,19 @@ static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 void debug_HB(void);
+
+/*
+ * Function to poll battery voltage
+ * */
+#define VBAT_divider 188.1f / 4096.0f // Conversion ratio, w/10x real voltage
+uint8_t getVBAT() {
+	uint16_t value_adc;
+	if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
+	    value_adc = HAL_ADC_GetValue(&hadc1);
+	}
+
+	return (uint8_t)(value_adc * VBAT_divider);
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -157,8 +170,9 @@ int main(void)
   HAL_Delay(10);
   DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
 
-  ML_decodeTelemetry(&masterStruct);
-
+  // Start ADC for VBAT measurement
+  HAL_ADCEx_Calibration_Start(&hadc1);
+  HAL_ADC_Start(&hadc1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -176,7 +190,12 @@ int main(void)
 		  dutyCycle_prev = dutyCycle;
 	  }
 
-	  HAL_Delay(500);
+	  // Send telemetry
+	  ML_sendTelemetry(&driverStruct, leftVelocity, rightVelocity, VBAT, 0, 0);
+
+	  // Non-critikal task
+	  VBAT = getVBAT();
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -223,7 +242,7 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV8;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -252,7 +271,7 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
@@ -266,7 +285,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_9;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -581,6 +600,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : VBAT_Pin */
+  GPIO_InitStruct.Pin = VBAT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  HAL_GPIO_Init(VBAT_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : FAULT1_Pin */
   GPIO_InitStruct.Pin = FAULT1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -624,9 +648,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 		ML_Interface.tx_flag = 1;
 		HAL_GPIO_TogglePin(ACT1_GPIO_Port, ACT1_Pin);
 	}
-
 }
-
 
 /* USER CODE END 4 */
 
