@@ -13,6 +13,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
 #include <math.h>
 #include "Debug.h"
 #include "DRV8848.h"
@@ -26,11 +27,20 @@ typedef enum main_states {
 	MAIN_INITIALIZATION,
 	MAIN_ERROR
 } Program_State;
+typedef struct {
+	TIM_HandleTypeDef *TIM_CH;
+	float pulses_per_rev;
+	int32_t count;
+    int32_t prev_count;
+    bool initialized;
+} EncoderState;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define encoder_pulses 44.0f
+#define gear_box_ratio 9.67f * 2.0f
+#define velocity_dt    5.0f //ms
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,16 +58,17 @@ ADC_HandleTypeDef hadc1;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
-
+// GLOBAL PROGRAM STATE
 Program_State MAIN_State = MAIN_INITIALIZATION;
-
-DRV8848 MTR1 = {EN1_GPIO_Port,
+// DRV8848 H-BRIDGE VARIABLES
+DRV8848 MTR_left = {EN1_GPIO_Port,
 				EN1_Pin,
 				&htim1,
 				TIM_CHANNEL_3,
@@ -65,9 +76,7 @@ DRV8848 MTR1 = {EN1_GPIO_Port,
 				FAULT1_GPIO_Port,
 				FAULT1_Pin,
 				DRV8848_BRAKE};
-DRV8848_Status MTR1_status = DRV8848_OK;
-
-DRV8848 MTR2 = {EN2_GPIO_Port,
+DRV8848 MTR_right = {EN2_GPIO_Port,
 				EN2_Pin,
 				&htim1,
 				TIM_CHANNEL_1,
@@ -75,21 +84,31 @@ DRV8848 MTR2 = {EN2_GPIO_Port,
 				FAULT2_GPIO_Port,
 				FAULT2_Pin,
 				DRV8848_BRAKE};
-DRV8848_Status MTR2_status = DRV8848_OK;
+DRV8848_Status MTR_left_status = DRV8848_OK;
+DRV8848_Status MTR_right_status = DRV8848_OK;
 
+// ENCODER VARIABLES
+EncoderState ENC_left = {.TIM_CH = &htim2,
+						.pulses_per_rev = encoder_pulses * gear_box_ratio,
+						.count = 0,
+						.prev_count = 0,
+						.initialized = true};
+EncoderState ENC_right = {.TIM_CH = &htim3,
+						.pulses_per_rev = encoder_pulses * gear_box_ratio,
+						.count = 0,
+						.prev_count = 0,
+						.initialized = true};
 
-ML_UARTInterface ML_Interface = {
-		.huart = &huart2
-};
+// COMMUNICATION LINK VARIABLES
+ML_UARTInterface ML_Interface = {.huart = &huart2};
+ML_Driver DRV_Properties;
 
-ML_Driver driverStruct;
-
+// OTHERS
 float dutyCycle = 1.0f;
 float dutyCycle_prev = 0.0f;
 
-
+float VBAT_divider = 188.1f / 4096.0f;// Conversion ratio, w/10x real voltage
 uint8_t VBAT = 0;
-int32_t counter;
 
 /* USER CODE END PV */
 
@@ -103,6 +122,7 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 void debug_HB(void);
@@ -110,9 +130,10 @@ void debug_HB(void);
 /*
  * Function to poll battery voltage
  * */
-#define VBAT_divider 188.1f / 4096.0f // Conversion ratio, w/10x real voltage
+
 uint8_t getVBAT() {
 	uint16_t value_adc;
+	HAL_ADC_Start(&hadc1);
 	if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {
 	    value_adc = HAL_ADC_GetValue(&hadc1);
 	}
@@ -128,20 +149,32 @@ float controller_PID(int16_t setPoint_velocity,
 
 	int16_t error_velocity = setPoint_velocity - current_velocity;
 	static int16_t prev_error_velocity = 0;
-
 	// Low-pass pre-filter
 	if (LPF) {
 		float alpha = (float)(exp(-Ki * dt / Kp));
 		error_velocity = error_velocity * alpha + prev_error_velocity * (1-alpha);
 	}
-
 	// PID
 	error_velocity+= error_velocity * dt;
 	float PID = Kp * error_velocity +
 				Ki * error_velocity +
 				Kd * (error_velocity - prev_error_velocity) / dt;
-
 	return PID;
+}
+/*
+ * Function to calculate velocity from encoder readings, used for both motors
+ * */
+int16_t getVelocity(EncoderState *self, float dt_ms) {
+	if (!self->initialized) {
+		//Init
+		self->prev_count = 0;
+		self->initialized = true;
+	}
+	self->count = __HAL_TIM_GET_COUNTER(self->TIM_CH);
+	int16_t retVelocity = (60000.0 *(self->count - self->prev_count)) /
+							(self->pulses_per_rev * dt_ms);
+	self->prev_count = self->count;
+	return retVelocity;
 }
 /* USER CODE END PFP */
 
@@ -185,24 +218,28 @@ int main(void)
   MX_TIM3_Init();
   MX_USART3_UART_Init();
   MX_USART2_UART_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   dbg_printf("Hello World!\r\n");
   dbg_printf("Firmware by lmaoPkk\r\n");
   dbg_printf("\"hehe\" dual H-bridge driver initializing...\r\n");
-  DRV8848_Init(&MTR1);
+  DRV8848_Init(&MTR_left);
 
   HAL_Delay(100);
-  DRV8848_Enable(&MTR1);
+  DRV8848_Enable(&MTR_left);
   HAL_Delay(10);
-  DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
+  DRV8848_setDrive(&MTR_left, dutyCycle, DRV8848_FWD);
 
   // Start counter for encoder
-  HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+  HAL_TIM_Encoder_Start(ENC_left.TIM_CH, TIM_CHANNEL_ALL);
+  HAL_TIM_Encoder_Start(ENC_right.TIM_CH, TIM_CHANNEL_ALL);
 
+  // Start TIM4 for control loop timing
+  HAL_TIM_Base_Start_IT(&htim4);
 
   // Start ADC for VBAT measurement
   HAL_ADCEx_Calibration_Start(&hadc1);
-  HAL_ADC_Start(&hadc1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -211,20 +248,22 @@ int main(void)
   {
 	  debug_HB();
 //	  printf("haha\n hehe\n lmao \n");
-	  if (DRV8848_IsFaultActive(&MTR1) == DRV8848_FAULT) {
-		  MTR1_status = DRV8848_FAULT;
+	  if (DRV8848_IsFaultActive(&MTR_left) == DRV8848_FAULT) {
+		  MTR_left_status = DRV8848_FAULT;
 	  }
 
 	  if (dutyCycle != dutyCycle_prev) {
-		  DRV8848_setDrive(&MTR1, dutyCycle, DRV8848_FWD);
+		  DRV8848_setDrive(&MTR_left, dutyCycle, DRV8848_FWD);
 		  dutyCycle_prev = dutyCycle;
 	  }
 
-	  // Send telemetry
-	  //ML_sendTelemetry(&driverStruct);
-	  counter = __HAL_TIM_GET_COUNTER(&htim2);
+
 	  // Non-critikal task
-	  VBAT = getVBAT();
+	  DRV_Properties.telemetry.VBAT = getVBAT();
+
+	  // Send telemetry
+	  //ML_sendTelemetry(&DRV_Properties);
+
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
@@ -301,7 +340,7 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
@@ -347,7 +386,7 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 17;
+  htim1.Init.Prescaler = 14;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 199;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -437,7 +476,7 @@ static void MX_TIM2_Init(void)
   htim2.Init.Period = 65535;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
@@ -486,7 +525,7 @@ static void MX_TIM3_Init(void)
   htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
@@ -508,6 +547,51 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 71;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 4999;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
 
 }
 
@@ -669,7 +753,7 @@ void debug_HB() {
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   if(GPIO_Pin == FAULT1_Pin) {
-	  MTR1_status = DRV8848_FAULT;
+	  MTR_left_status = DRV8848_FAULT;
   }
 }
 
@@ -677,6 +761,12 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart->Instance == USART2) {
 		ML_Interface.tx_flag = 1;
 		HAL_GPIO_TogglePin(ACT1_GPIO_Port, ACT1_Pin);
+	}
+}
+void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *TIM) {
+	if (TIM->Instance == TIM4) {
+		DRV_Properties.telemetry.ML_Left_Velocity = getVelocity(&ENC_left, velocity_dt);
+		DRV_Properties.telemetry.ML_Left_Velocity = getVelocity(&ENC_right, velocity_dt);
 	}
 }
 
@@ -691,8 +781,8 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-//  driverDisable(&MTR1);
-  DRV8848_ErrHandler(&MTR1);
+//  driverDisable(&MTR_left);
+  DRV8848_ErrHandler(&MTR_left);
   while (1)
   {
 	  HAL_GPIO_TogglePin(HB_GPIO_Port, HB_Pin);
