@@ -101,4 +101,12 @@ DRV8848_Status DRV8848_IsEnabled(DRV8848 *self);
  * */
 DRV8848_Status DRV8848_ErrHandler(DRV8848 *self);
 
+/*
+ * @brief   Set the drive mode
+ * @param   self: pointer to DRV8848 struct
+ * @param   mode: DRV8848_Mode
+ * @retval  DRV8848_Status
+ * */
+DRV8848_Status DRV8848_setDriveMode(DRV8848 *self, DRV8848_Mode mode);
+
 #endif /* DRV8848_DRV8848_H_ */

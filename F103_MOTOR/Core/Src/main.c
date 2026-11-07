@@ -30,17 +30,21 @@ typedef enum main_states {
 typedef struct {
 	TIM_HandleTypeDef *TIM_CH;
 	float pulses_per_rev;
-	int32_t count;
-    int32_t prev_count;
+	uint16_t count;
+    uint16_t prev_count;
     bool initialized;
 } EncoderState;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define encoder_pulses 44.0f
+#define encoder_pulses 44.0f // Quadrature mode
 #define gear_box_ratio 9.67f * 2.0f
-#define velocity_dt    5.0f //ms
+#define velocity_dt    10.0f //unit: ms
+
+#define tuned_Kp 0.1
+#define tuned_Ki 0.1
+#define tuned_Kd 0.0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -103,8 +107,10 @@ EncoderState ENC_right = {.TIM_CH = &htim3,
 ML_UARTInterface ML_Interface = {.huart = &huart2};
 ML_Driver DRV_Properties;
 
+float pid_out_left;
+int16_t ramped_left;
 // OTHERS
-float dutyCycle = 1.0f;
+float dutyCycle = 0.5f;
 float dutyCycle_prev = 0.0f;
 
 float VBAT_divider = 188.1f / 4096.0f;// Conversion ratio, w/10x real voltage
@@ -170,12 +176,33 @@ int16_t getVelocity(EncoderState *self, float dt_ms) {
 		self->prev_count = 0;
 		self->initialized = true;
 	}
+
 	self->count = __HAL_TIM_GET_COUNTER(self->TIM_CH);
-	int16_t retVelocity = (60000.0 *(self->count - self->prev_count)) /
+	//delta_pulse variable for overflow handling
+	int16_t delta_pulse = (int16_t)(self->count - self->prev_count);
+	int16_t retVelocity = (60000.0 * delta_pulse) /
 							(self->pulses_per_rev * dt_ms);
 	self->prev_count = self->count;
 	return retVelocity;
 }
+
+int16_t velocityRamp(int16_t current,
+		int16_t target, uint8_t rate, float dt_ms) {
+
+	int16_t step = (int16_t)(rate * dt_ms / 1000.0f);
+	if ((current + step) < target) {
+		current += step;
+	}
+	else if ((current - step) > target) {
+		current -= step;
+	}
+	else {
+		current = target;
+	}
+
+	return current;
+}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -234,11 +261,26 @@ int main(void)
   HAL_TIM_Encoder_Start(ENC_left.TIM_CH, TIM_CHANNEL_ALL);
   HAL_TIM_Encoder_Start(ENC_right.TIM_CH, TIM_CHANNEL_ALL);
 
+  // Calculate ARR from sample time. Ts < 65.535 ms
+  htim4.Init.Period = (uint32_t)(1000.0f * velocity_dt) - 1;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK) {Error_Handler();}
+
   // Start TIM4 for control loop timing
   HAL_TIM_Base_Start_IT(&htim4);
 
   // Start ADC for VBAT measurement
   HAL_ADCEx_Calibration_Start(&hadc1);
+
+  DRV_Properties.setPoints.ML_Left_Velocity = 250;
+  DRV_Properties.setPoints.ML_Right_Velocity = 250;
+
+  DRV_Properties.setPoints.ML_Left_Acceleration = 150;
+  DRV_Properties.setPoints.ML_Right_Acceleration = 150;
+
+  DRV_Properties.setPoints.ML_Left_DriveMode = DRV8848_BRAKE;
+  DRV_Properties.setPoints.ML_Right_DriveMode = DRV8848_BRAKE;
+
+  DRV8848_setDriveMode(&MTR_left, DRV8848_BRAKE);
 
   /* USER CODE END 2 */
 
@@ -252,10 +294,10 @@ int main(void)
 		  MTR_left_status = DRV8848_FAULT;
 	  }
 
-	  if (dutyCycle != dutyCycle_prev) {
-		  DRV8848_setDrive(&MTR_left, dutyCycle, DRV8848_FWD);
-		  dutyCycle_prev = dutyCycle;
-	  }
+//	  if (dutyCycle != dutyCycle_prev) {
+//		  DRV8848_setDrive(&MTR_left, dutyCycle, DRV8848_FWD);
+//		  dutyCycle_prev = dutyCycle;
+//	  }
 
 
 	  // Non-critikal task
@@ -571,7 +613,7 @@ static void MX_TIM4_Init(void)
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 71;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 4999;
+  htim4.Init.Period = 19999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -766,7 +808,23 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *TIM) {
 	if (TIM->Instance == TIM4) {
 		DRV_Properties.telemetry.ML_Left_Velocity = getVelocity(&ENC_left, velocity_dt);
-		DRV_Properties.telemetry.ML_Left_Velocity = getVelocity(&ENC_right, velocity_dt);
+		DRV_Properties.telemetry.ML_Right_Velocity = getVelocity(&ENC_right, velocity_dt);
+
+		ramped_left = velocityRamp(DRV_Properties.telemetry.ML_Left_Velocity,
+					 DRV_Properties.setPoints.ML_Left_Velocity,
+					 DRV_Properties.setPoints.ML_Left_Acceleration,
+					 velocity_dt);
+
+		pid_out_left = controller_PID(ramped_left,
+							DRV_Properties.telemetry.ML_Left_Velocity,
+							tuned_Kp, tuned_Ki, tuned_Kd, false, velocity_dt);
+		if (pid_out_left > 0) {
+			DRV8848_setDrive(&MTR_left, pid_out_left, DRV8848_FWD);
+		}
+		else {
+			DRV8848_setDrive(&MTR_left, pid_out_left * -1.0, DRV8848_REV);
+		}
+
 	}
 }
 

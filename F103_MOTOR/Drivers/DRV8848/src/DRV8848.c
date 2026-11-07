@@ -93,3 +93,7 @@ DRV8848_Status DRV8848_ErrHandler(DRV8848 *self) {
 	return DRV8848_OK;
 }
 
+DRV8848_Status DRV8848_setDriveMode(DRV8848 *self, DRV8848_Mode mode) {
+	self->decayMode = mode;
+	return DRV8848_OK;
+}
