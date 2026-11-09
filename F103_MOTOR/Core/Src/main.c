@@ -34,16 +34,34 @@ typedef struct {
     uint16_t prev_count;
     bool initialized;
 } EncoderState;
+
+typedef struct{
+	float error;
+	float prev_error;
+
+	bool LPF;
+	float alpha;
+
+	float Kp;
+	float Ki;
+	float Kd;
+	float dt;
+
+	float integral;
+	float integral_lim;
+
+	float output;
+}PID_Controller;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define encoder_pulses 44.0f // Quadrature mode
-#define gear_box_ratio 9.67f * 2.0f
-#define velocity_dt    10.0f //unit: ms
+#define gear_box_ratio 9.677419f
+#define velocity_dt    16.0f //unit: ms
 
-#define tuned_Kp 0.1
-#define tuned_Ki 0.1
+#define tuned_Kp 0.01
+#define tuned_Ki 0.0
 #define tuned_Kd 0.0
 /* USER CODE END PD */
 
@@ -103,12 +121,34 @@ EncoderState ENC_right = {.TIM_CH = &htim3,
 						.prev_count = 0,
 						.initialized = true};
 
+// PID VARIABLES
+PID_Controller PID_left = {
+		.Kp = 0.06,
+		.Ki = 0.06,
+		.Kd = 0.0,
+		.dt = velocity_dt/1000.0f,
+		.integral = 0,
+		.integral_lim = 100.0,
+		.prev_error = 0,
+		.LPF = true,
+		.alpha = 0.98};
+PID_Controller PID_right = {
+		.Kp = 0.01,
+		.Ki = 0.0,
+		.Kd = 0.0,
+		.dt = velocity_dt/1000.0f,
+		.integral = 0,
+		.integral_lim = 100.0,
+		.prev_error = 0,
+		.LPF = true,
+		.alpha = 0.98};
 // COMMUNICATION LINK VARIABLES
 ML_UARTInterface ML_Interface = {.huart = &huart2};
 ML_Driver DRV_Properties;
 
 float pid_out_left;
 int16_t ramped_left;
+int16_t velocity_tempSet_left = 0;
 // OTHERS
 float dutyCycle = 0.5f;
 float dutyCycle_prev = 0.0f;
@@ -146,26 +186,30 @@ uint8_t getVBAT() {
 
 	return (uint8_t)(value_adc * VBAT_divider);
 }
-
-float controller_PID(int16_t setPoint_velocity,
-						int16_t current_velocity,
-						float Kp,
-						float Ki,
-						float Kd, bool LPF, float dt) {
-
-	int16_t error_velocity = setPoint_velocity - current_velocity;
-	static int16_t prev_error_velocity = 0;
+/*
+ * PID controller
+ * */
+void controller_PID(PID_Controller *pid, int16_t setPoint_velocity,
+						int16_t current_velocity) {
+	pid->error = setPoint_velocity - current_velocity;
 	// Low-pass pre-filter
-	if (LPF) {
-		float alpha = (float)(exp(-Ki * dt / Kp));
-		error_velocity = error_velocity * alpha + prev_error_velocity * (1-alpha);
+	if (pid->LPF) {
+		pid->error = pid->prev_error * pid->alpha + pid->error * (1- pid->alpha);
 	}
 	// PID
-	error_velocity+= error_velocity * dt;
-	float PID = Kp * error_velocity +
-				Ki * error_velocity +
-				Kd * (error_velocity - prev_error_velocity) / dt;
-	return PID;
+	if (pid->output < 1.0 && pid->output > -1.0) { //Only accumulate if output is not saturated
+		pid->integral += pid->error * pid->dt;
+	}
+	if (pid->integral > pid->integral_lim)
+	    pid->integral = pid->integral_lim;
+
+	if (pid->integral < -pid->integral_lim)
+	    pid->integral = -pid->integral_lim;
+	pid->output = pid->Kp * pid->error +
+			pid->Ki * pid->integral +
+			pid->Kd * (pid->error - pid->prev_error) / pid->dt;
+
+	pid->prev_error = pid->error;
 }
 /*
  * Function to calculate velocity from encoder readings, used for both motors
@@ -186,22 +230,28 @@ int16_t getVelocity(EncoderState *self, float dt_ms) {
 	return retVelocity;
 }
 
-int16_t velocityRamp(int16_t current,
-		int16_t target, uint8_t rate, float dt_ms) {
+/*
+ * Velocity ramping.
+ * */
+void velocityRamp(int16_t *current_setpoint, DRV8848 *MTR,
+		int16_t target, uint16_t rate, float dt_ms) {
+
+	if (DRV8848_IsEnabled(MTR) != DRV8848_OK) {
+		return;
+	}
 
 	int16_t step = (int16_t)(rate * dt_ms / 1000.0f);
-	if ((current + step) < target) {
-		current += step;
+	if ((*current_setpoint + step) < target) {
+		*current_setpoint += step;
 	}
-	else if ((current - step) > target) {
-		current -= step;
+	else if ((*current_setpoint - step) > target) {
+		*current_setpoint -= step;
 	}
 	else {
-		current = target;
+		*current_setpoint = target;
 	}
-
-	return current;
 }
+
 
 /* USER CODE END PFP */
 
@@ -255,7 +305,7 @@ int main(void)
   HAL_Delay(100);
   DRV8848_Enable(&MTR_left);
   HAL_Delay(10);
-  DRV8848_setDrive(&MTR_left, dutyCycle, DRV8848_FWD);
+  //DRV8848_setDrive(&MTR_left, dutyCycle, DRV8848_FWD);
 
   // Start counter for encoder
   HAL_TIM_Encoder_Start(ENC_left.TIM_CH, TIM_CHANNEL_ALL);
@@ -271,8 +321,8 @@ int main(void)
   // Start ADC for VBAT measurement
   HAL_ADCEx_Calibration_Start(&hadc1);
 
-  DRV_Properties.setPoints.ML_Left_Velocity = 250;
-  DRV_Properties.setPoints.ML_Right_Velocity = 250;
+  DRV_Properties.setPoints.ML_Left_Velocity = 500;
+  DRV_Properties.setPoints.ML_Right_Velocity = 500;
 
   DRV_Properties.setPoints.ML_Left_Acceleration = 150;
   DRV_Properties.setPoints.ML_Right_Acceleration = 150;
@@ -810,20 +860,29 @@ void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *TIM) {
 		DRV_Properties.telemetry.ML_Left_Velocity = getVelocity(&ENC_left, velocity_dt);
 		DRV_Properties.telemetry.ML_Right_Velocity = getVelocity(&ENC_right, velocity_dt);
 
-		ramped_left = velocityRamp(DRV_Properties.telemetry.ML_Left_Velocity,
+		// Beginning of motion generation
+		velocityRamp(&velocity_tempSet_left, &MTR_left,
 					 DRV_Properties.setPoints.ML_Left_Velocity,
 					 DRV_Properties.setPoints.ML_Left_Acceleration,
 					 velocity_dt);
 
-		pid_out_left = controller_PID(ramped_left,
-							DRV_Properties.telemetry.ML_Left_Velocity,
-							tuned_Kp, tuned_Ki, tuned_Kd, false, velocity_dt);
-		if (pid_out_left > 0) {
-			DRV8848_setDrive(&MTR_left, pid_out_left, DRV8848_FWD);
+		controller_PID(&PID_left, velocity_tempSet_left,
+							DRV_Properties.telemetry.ML_Left_Velocity);
+
+		if (PID_left.output > 1.0f) {
+			PID_left.output = 1.0;
+		}
+		else if (PID_left.output < -1.0f) {
+			PID_left.output = -1.0;
+		}
+
+		if (PID_left.output > 0) {
+			DRV8848_setDrive(&MTR_left, PID_left.output, DRV8848_FWD);
 		}
 		else {
-			DRV8848_setDrive(&MTR_left, pid_out_left * -1.0, DRV8848_REV);
+			DRV8848_setDrive(&MTR_left, PID_left.output * -1.0, DRV8848_REV);
 		}
+		// End of motion generation
 
 	}
 }
